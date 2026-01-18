@@ -49,3 +49,9 @@ add_executable(measure
 target_include_directories(measure PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(measure PRIVATE perfect6502)
 
+add_executable(ark
+  ark/main.cpp
+)
+target_include_directories(ark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(ark PRIVATE perfect6502)
+
