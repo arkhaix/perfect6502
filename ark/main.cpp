@@ -71,6 +71,10 @@ void printState(void *state, PrintCondition cond) {
          "Data:%02X RW:%d A:%02X X:%02X Y:%02X\n",
          pc, pc_deref, ir, sync_, t0, t1, t2, t3, t4, t5, t6, address_bus,
          data_bus, rw, a, x, y);
+
+  if (sync_ != 0) {
+    printf("\n");
+  }
 }
 
 void setupMemory() {
