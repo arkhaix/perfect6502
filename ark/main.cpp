@@ -11,17 +11,19 @@ extern "C" {
 #include "../perfect6502.h"
 }
 
+#include "disasm.h"
+
 // Nodes that aren't in netlist_6502.h or have been commented out
 namespace netlist {
 enum {
-  clock1 = 156,
-  clock2 = 1536,
-  sync_ = 539,
+  sync_ = 539,   // fetch
+  clock1 = 156,  // t0
+  clock2 = 1536, // t1
   t2 = 971,
   t3 = 1567,
   t4 = 690,
   t5 = 909,
-  vec1 = 1481,
+  vec1 = 1481, // t6
 };
 } // namespace netlist
 
@@ -66,6 +68,11 @@ void printState(void *state, PrintCondition cond) {
       state, 8,
       (nodenum_t[]){netlist::y0, netlist::y1, netlist::y2, netlist::y3,
                     netlist::y4, netlist::y5, netlist::y6, netlist::y7});
+
+  // Print disassembly before first output of new instruction
+  if (t2 == 0) {
+    printf("%s\n", ark::disassemble(ir, memory[pc], memory[pc + 1]).c_str());
+  }
 
   printf("PC:%04X (PC):%02X IR:%02X Sync:%d T:%d%d%d%d%d%d%d Addr:%04X "
          "Data:%02X RW:%d A:%02X X:%02X Y:%02X\n",

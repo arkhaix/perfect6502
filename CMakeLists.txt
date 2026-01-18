@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(CMAKE_EXPORT_COMPILE_COMANDS ON)
+
 add_library(perfect6502 STATIC
   netlist_6502.h
   netlist_sim.c
@@ -51,6 +53,8 @@ target_link_libraries(measure PRIVATE perfect6502)
 
 add_executable(ark
   ark/main.cpp
+  ark/disasm.cpp
+  ark/disasm.h
 )
 target_include_directories(ark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(ark PRIVATE perfect6502)
