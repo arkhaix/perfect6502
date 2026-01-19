@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 
 #include <gflags/gflags.h>
@@ -51,6 +52,9 @@ void printState(void *state) {
   auto data_bus = readDataBus(state);
   auto rw = readRW(state);
 
+  auto sp = readSP(state);
+  auto sp_deref = memory[sp];
+
   auto pc = readPC(state);
   auto pc_deref = memory[pc];
 
@@ -66,10 +70,11 @@ void printState(void *state) {
   }
 
   std::string display = std::format(
-      "PC:{:04X} (PC):{:02X} IR:{:02X} Sync:{} T:{}{}{}{}{}{}{} "
-      "Addr:{:04X} Data:{:02X} RW:{} A:{:02X} X:{:02X} Y:{:02X} P:{:02X}\n",
-      pc, pc_deref, ir, sync_, t0, t1, t2, t3, t4, t5, t6, address_bus,
-      data_bus, rw, a, x, y, p);
+      "PC:{:04X} (PC):{:02X} IR:{:02X} Sync:{} T:{}{}{}{}{}{}{} SP:{:04X} "
+      "(SP):{:02X} Addr:{:04X} Data:{:02X} RW:{} A:{:02X} X:{:02X} Y:{:02X} "
+      "P:{:02X}\n",
+      pc, pc_deref, ir, sync_, t0, t1, t2, t3, t4, t5, t6, sp, sp_deref,
+      address_bus, data_bus, rw, a, x, y, p);
   log(display);
 
   if (sync_ != 0) {
@@ -193,7 +198,7 @@ void shutdown() {
 #endif
 }
 
-int get_input() {
+int get_input_key() {
 #if WITH_CURSES
   int ch = getch();
 #else
@@ -203,10 +208,25 @@ int get_input() {
   return static_cast<int>(ch);
 }
 
+std::string get_input_line() {
+#if WITH_CURSES
+  echo();
+  char input[80];
+  getnstr(input, 80);
+  std::string str(input);
+  noecho();
+#else
+  std::string str;
+  std::getline(std::cin, str);
+#endif
+  return str;
+}
+
 void help_interactive() {
   log("Interactive mode:\n");
   log("  s|i|<enter> Step one instruction\n");
   log("  c|t|<space> Step one full clock tick\n");
+  log("  m           Read memory\n");
   log("  h|?         Show this help\n");
   log("  q|x|e|<esc> Quit\n");
   log("===\n\n");
@@ -233,6 +253,7 @@ int main(int argc, char **argv) {
     // Interactive mode. Execute user commands.
     std::vector<int> cmd_tick_clock{'c', 't', ' '};
     std::vector<int> cmd_step_instruction{'s', 'i'};
+    std::vector<int> cmd_memory{'m'};
     std::vector<int> cmd_help = {'h', '?'};
     std::vector<int> cmd_quit = {'q', 'x', 'e', 27};
 #if WITH_CURSES
@@ -242,7 +263,7 @@ int main(int argc, char **argv) {
     bool go = true;
     while (go) {
 
-      int ch = get_input();
+      int ch = get_input_key();
 
       // Quit
       if (std::find(cmd_quit.begin(), cmd_quit.end(), ch) != cmd_quit.end()) {
@@ -261,6 +282,23 @@ int main(int argc, char **argv) {
                          cmd_step_instruction.end(),
                          ch) != cmd_step_instruction.end()) {
         advanceInstruction(state, true);
+      }
+
+      // Memory
+      else if (std::find(cmd_memory.begin(), cmd_memory.end(), ch) !=
+               cmd_memory.end()) {
+        log("Memory address (four hex digits like fa23): ");
+        std::string line = get_input_line();
+        std::stringstream iss(line);
+        uint32_t address = 0;
+        iss >> std::hex >> address;
+        address &= 0xffff;
+        std::string output = std::format("{:04X}:  ", address);
+        for (int i = 0; i < 16; i++) {
+          output += std::format("{:02X} ", memory[(address + i) & 0xffff]);
+        }
+        output += "\n";
+        log(output);
       }
 
       // Help
