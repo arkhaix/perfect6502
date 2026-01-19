@@ -1,6 +1,7 @@
 .build
 .cache
 build
+
 *.xcodeproj
 # emacs-style backup files
 *~
@@ -12,3 +13,4 @@ cbmbasic/cbmbasic
 measure
 *.o
 
+*.bin

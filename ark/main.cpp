@@ -1,4 +1,7 @@
+#include <algorithm>
+#include <fstream>
 #include <iostream>
+#include <string>
 
 #include <gflags/gflags.h>
 
@@ -74,35 +77,54 @@ void printState(void *state) {
   }
 }
 
-void setupMemory() {
-  // This is the default program from visual6502.org
-  /*
-  0000   A9 00                LDA #$00
-  0002   20 10 00   L0002     JSR L0010
-  0005   4C 02 00             JMP L0002
-  0008   00                   BRK
-  0009   00                   BRK
-  000A   00                   BRK
-  000B   00                   BRK
-  000C   00                   BRK
-  000D   00                   BRK
-  000E   00                   BRK
-  000F   40                   RTI
-  0010   E8         L0010     INX
-  0011   88                   DEY
-  0012   E6 0F                INC $0F
-  0014   38                   SEC
-  0015   69 02                ADC #$02
-  0017   60                   RTS
-  0018   00                   BRK
-  0019   00                   BRK
-  */
+void setupMemory(std::string filename) {
+  if (!filename.empty()) {
+    std::ifstream input_file(filename, std::ios::binary | std::ios::ate);
+    if (!input_file) {
+      filename.clear();
+    } else {
+      std::memset(memory, 0x00, sizeof(memory));
+      size_t file_bytes = std::min(static_cast<size_t>(input_file.tellg()),
+                                   static_cast<size_t>(0x10000));
+      input_file.seekg(0);
+      input_file.read((char *)(&memory[0]), file_bytes);
+      input_file.close();
+      log(std::format("Loaded {} bytes from {}\n", file_bytes, filename));
+      log(std::format("Reset vector: {:02X}{:02X}\n", memory[0xfffd],
+                      memory[0xfffc]));
+    }
+  }
 
-  std::vector<uint8_t> program = {
-      0xa9, 0x00, 0x20, 0x10, 0x00, 0x4c, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,
-      0x00, 0x00, 0x00, 0x40, 0xe8, 0x88, 0xe6, 0x0f, 0x38, 0x69, 0x02, 0x60};
+  if (filename.empty()) {
+    // This is the default program from visual6502.org
+    /*
+    0000   A9 00                LDA #$00
+    0002   20 10 00   L0002     JSR L0010
+    0005   4C 02 00             JMP L0002
+    0008   00                   BRK
+    0009   00                   BRK
+    000A   00                   BRK
+    000B   00                   BRK
+    000C   00                   BRK
+    000D   00                   BRK
+    000E   00                   BRK
+    000F   40                   RTI
+    0010   E8         L0010     INX
+    0011   88                   DEY
+    0012   E6 0F                INC $0F
+    0014   38                   SEC
+    0015   69 02                ADC #$02
+    0017   60                   RTS
+    0018   00                   BRK
+    0019   00                   BRK
+    */
 
-  std::memcpy(&memory[0x0000], program.data(), program.size());
+    std::vector<uint8_t> program = {
+        0xa9, 0x00, 0x20, 0x10, 0x00, 0x4c, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x40, 0xe8, 0x88, 0xe6, 0x0f, 0x38, 0x69, 0x02, 0x60};
+
+    std::memcpy(&memory[0x0000], program.data(), program.size());
+  }
 }
 
 DEFINE_bool(interactive, false,
@@ -114,6 +136,8 @@ DEFINE_bool(interactive, false,
             "    q|x|e|<esc>    quit");
 
 DEFINE_int32(cycles, 100, "Run this many full cycles and exit.");
+
+DEFINE_string(file, "", "Binary program file to execute");
 
 #if WITH_CURSES
 #include <ncurses.h>
@@ -194,7 +218,7 @@ int main(int argc, char **argv) {
   init();
 
   // Initial state
-  setupMemory();
+  setupMemory(FLAGS_file);
   void *state = initAndResetChip();
   printState(state);
   log("===\n");
