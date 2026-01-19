@@ -1,5 +1,7 @@
 #include <iostream>
 
+#include <gflags/gflags.h>
+
 #include "../types.h"
 
 namespace netlist {
@@ -12,6 +14,8 @@ extern "C" {
 }
 
 #include "disasm.h"
+
+void log(std::string str);
 
 // Nodes that aren't in netlist_6502.h or have been commented out
 namespace netlist {
@@ -27,16 +31,7 @@ enum {
 };
 } // namespace netlist
 
-enum class PrintCondition { Always, LowOnly };
-void printState(void *state, PrintCondition cond) {
-
-  // halfcyc:1 phi0:0 AB:00FF D:00 RnW:1 PC:00FF A:00 X:C0 Y:00 SP:C0 P:02 IR:00
-
-  auto c0 = readNodes(state, 1, (nodenum_t[]){netlist::clk0});
-  if (cond == PrintCondition::LowOnly && c0 != 0) {
-    return;
-  }
-
+void printState(void *state) {
   auto t0 = readNodes(state, 1, (nodenum_t[]){netlist::clock1});
   auto t1 = readNodes(state, 1, (nodenum_t[]){netlist::clock2});
   auto t2 = readNodes(state, 1, (nodenum_t[]){netlist::t2});
@@ -56,31 +51,26 @@ void printState(void *state, PrintCondition cond) {
   auto pc = readPC(state);
   auto pc_deref = memory[pc];
 
-  auto a = (uint8_t)readNodes(
-      state, 8,
-      (nodenum_t[]){netlist::a0, netlist::a1, netlist::a2, netlist::a3,
-                    netlist::a4, netlist::a5, netlist::a6, netlist::a7});
-  auto x = (uint8_t)readNodes(
-      state, 8,
-      (nodenum_t[]){netlist::x0, netlist::x1, netlist::x2, netlist::x3,
-                    netlist::x4, netlist::x5, netlist::x6, netlist::x7});
-  auto y = (uint8_t)readNodes(
-      state, 8,
-      (nodenum_t[]){netlist::y0, netlist::y1, netlist::y2, netlist::y3,
-                    netlist::y4, netlist::y5, netlist::y6, netlist::y7});
+  auto a = readA(state);
+  auto x = readX(state);
+  auto y = readY(state);
+  auto p = readP(state);
 
   // Print disassembly before first output of new instruction
   if (t2 == 0) {
-    printf("%s\n", ark::disassemble(ir, memory[pc], memory[pc + 1]).c_str());
+    log(std::format("{}\n",
+                    ark::disassemble(ir, memory[pc], memory[pc + 1]).c_str()));
   }
 
-  printf("PC:%04X (PC):%02X IR:%02X Sync:%d T:%d%d%d%d%d%d%d Addr:%04X "
-         "Data:%02X RW:%d A:%02X X:%02X Y:%02X\n",
-         pc, pc_deref, ir, sync_, t0, t1, t2, t3, t4, t5, t6, address_bus,
-         data_bus, rw, a, x, y);
+  std::string display = std::format(
+      "PC:{:04X} (PC):{:02X} IR:{:02X} Sync:{} T:{}{}{}{}{}{}{} "
+      "Addr:{:04X} Data:{:02X} RW:{} A:{:02X} X:{:02X} Y:{:02X} P:{:02X}\n",
+      pc, pc_deref, ir, sync_, t0, t1, t2, t3, t4, t5, t6, address_bus,
+      data_bus, rw, a, x, y, p);
+  log(display);
 
   if (sync_ != 0) {
-    printf("\n");
+    log("\n");
   }
 }
 
@@ -115,18 +105,155 @@ void setupMemory() {
   std::memcpy(&memory[0x0000], program.data(), program.size());
 }
 
-int main(int argc, char **argv) {
-  setupMemory();
+DEFINE_bool(interactive, false,
+            "Run in interactive mode. "
+            "Advance one cycle or instruction at a time "
+            "until exit is requested. During operation:\n"
+            "    c|t|<space>    advance one cycle\n"
+            "    s|i|<enter>    advance one instruction\n"
+            "    q|x|e|<esc>    quit");
 
-  void *state = initAndResetChip();
-  printState(state, PrintCondition::Always);
-  printf("===\n");
+DEFINE_int32(cycles, 100, "Run this many full cycles and exit.");
 
-  for (auto i = 0; i < 120; i++) {
+#if WITH_CURSES
+#include <ncurses.h>
+#endif
+
+void advanceHalfClock(void *state) { step(state); }
+
+void advanceFullClock(void *state) {
+  step(state);
+  auto c0 = readNodes(state, 1, (nodenum_t[]){netlist::clk0});
+  if (c0 != 0) {
     step(state);
-    printState(state, PrintCondition::LowOnly);
+  }
+}
+
+void advanceInstruction(void *state, bool print_state) {
+  advanceFullClock(state);
+  if (print_state) {
+    printState(state);
+  }
+  auto t2 = readNodes(state, 1, (nodenum_t[]){netlist::t2});
+  while (t2 != 0) {
+    advanceFullClock(state);
+    if (print_state) {
+      printState(state);
+    }
+    t2 = readNodes(state, 1, (nodenum_t[]){netlist::t2});
+  }
+}
+
+void log(std::string str) {
+#if WITH_CURSES
+  addstr(str.c_str());
+  refresh();
+#else
+  printf("%s", str.c_str());
+#endif
+}
+
+void init() {
+#if WITH_CURSES
+  initscr();
+  scrollok(stdscr, true);
+  cbreak();
+  noecho();
+  keypad(stdscr, true);
+#endif
+}
+
+void shutdown() {
+#if WITH_CURSES
+  endwin();
+#endif
+}
+
+int get_input() {
+#if WITH_CURSES
+  int ch = getch();
+#else
+  char ch = 0;
+  std::cin.get(ch);
+#endif
+  return static_cast<int>(ch);
+}
+
+void help_interactive() {
+  log("Interactive mode:\n");
+  log("  s|i|<enter> Step one instruction\n");
+  log("  c|t|<space> Step one full clock tick\n");
+  log("  h|?         Show this help\n");
+  log("  q|x|e|<esc> Quit\n");
+  log("===\n\n");
+}
+
+int main(int argc, char **argv) {
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+  init();
+
+  // Initial state
+  setupMemory();
+  void *state = initAndResetChip();
+  printState(state);
+  log("===\n");
+
+  if (!FLAGS_interactive) {
+    // Non-interactive mode. Run for FLAGS_cycles cycles and exit
+    for (auto i = 0; i < FLAGS_cycles; i++) {
+      advanceFullClock(state);
+      printState(state);
+    }
+  } else {
+    // Interactive mode. Execute user commands.
+    std::vector<int> cmd_tick_clock{'c', 't', ' '};
+    std::vector<int> cmd_step_instruction{'s', 'i'};
+    std::vector<int> cmd_help = {'h', '?'};
+    std::vector<int> cmd_quit = {'q', 'x', 'e', 27};
+#if WITH_CURSES
+    cmd_step_instruction.push_back(10);
+#endif
+
+    bool go = true;
+    while (go) {
+
+      int ch = get_input();
+
+      // Quit
+      if (std::find(cmd_quit.begin(), cmd_quit.end(), ch) != cmd_quit.end()) {
+        go = false;
+      }
+
+      // Tick
+      else if (std::find(cmd_tick_clock.begin(), cmd_tick_clock.end(), ch) !=
+               cmd_tick_clock.end()) {
+        advanceFullClock(state);
+        printState(state);
+      }
+
+      // Step
+      else if (std::find(cmd_step_instruction.begin(),
+                         cmd_step_instruction.end(),
+                         ch) != cmd_step_instruction.end()) {
+        advanceInstruction(state, true);
+      }
+
+      // Help
+      else if (std::find(cmd_help.begin(), cmd_help.end(), ch) !=
+               cmd_help.end()) {
+        help_interactive();
+      }
+
+      // Unknown
+      else {
+        // do nothing
+      }
+    }
   }
 
   destroyChip(state);
+
+  shutdown();
   return 0;
 }

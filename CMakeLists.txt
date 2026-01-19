@@ -51,11 +51,31 @@ add_executable(measure
 target_include_directories(measure PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(measure PRIVATE perfect6502)
 
+include(FetchContent)
+FetchContent_Declare(
+  gflags
+  GIT_REPOSITORY https://github.com/gflags/gflags
+  GIT_TAG v2.3.0
+)
+FetchContent_MakeAvailable(gflags)
+
 add_executable(ark
   ark/main.cpp
   ark/disasm.cpp
   ark/disasm.h
 )
 target_include_directories(ark PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(ark PRIVATE perfect6502)
+target_link_libraries(ark PRIVATE perfect6502 gflags)
+
+option(USE_CURSES "Enable ncurses support" ON)
+if(USE_CURSES)
+  find_package(Curses QUIET)
+  if(CURSES_FOUND)
+    message(STATUS "Building with ncurses support enabled")
+    target_compile_definitions(ark PRIVATE WITH_CURSES)
+    target_include_directories(ark PRIVATE ${CURSES_INCLUDE_DIRS})
+    target_link_libraries(ark PRIVATE ${CURSES_LIBRARIES})
+  endif()
+endif()
+
 
