@@ -53,7 +53,7 @@ void printState(void *state) {
   auto rw = readRW(state);
 
   auto sp = readSP(state);
-  auto sp_deref = memory[sp];
+  auto sp_deref = memory[0x100 | sp];
 
   auto pc = readPC(state);
   auto pc_deref = memory[pc];
@@ -70,11 +70,11 @@ void printState(void *state) {
   }
 
   std::string display = std::format(
-      "PC:{:04X} (PC):{:02X} IR:{:02X} Sync:{} T:{}{}{}{}{}{}{} SP:{:04X} "
+      "PC:{:04X} (PC):{:02X} IR:{:02X} Sync:{} SP:{:02X} "
       "(SP):{:02X} Addr:{:04X} Data:{:02X} RW:{} A:{:02X} X:{:02X} Y:{:02X} "
       "P:{:02X}\n",
-      pc, pc_deref, ir, sync_, t0, t1, t2, t3, t4, t5, t6, sp, sp_deref,
-      address_bus, data_bus, rw, a, x, y, p);
+      pc, pc_deref, ir, sync_, sp, sp_deref, address_bus, data_bus, rw, a, x, y,
+      p);
   log(display);
 
   if (sync_ != 0) {
@@ -82,25 +82,74 @@ void printState(void *state) {
   }
 }
 
+enum class FileType {
+  None,
+  Auto,
+  Bin,
+  Nes,
+};
+
+struct INesHeader {
+  uint32_t magic;
+  uint8_t prg_banks;
+  uint8_t unused[11];
+};
+
 void setupMemory(std::string filename) {
-  if (!filename.empty()) {
-    std::ifstream input_file(filename, std::ios::binary | std::ios::ate);
+  FileType file_type = FileType::Auto;
+  if (filename.empty()) {
+    file_type = FileType::None;
+  }
+
+  INesHeader header;
+  std::ifstream input_file;
+  size_t file_bytes = 0;
+
+  std::memset(memory, 0x00, sizeof(memory));
+
+  if (file_type == FileType::Auto) {
+    input_file.open(filename, std::ios::binary | std::ios::ate);
     if (!input_file) {
-      filename.clear();
+      file_type = FileType::None;
     } else {
-      std::memset(memory, 0x00, sizeof(memory));
-      size_t file_bytes = std::min(static_cast<size_t>(input_file.tellg()),
-                                   static_cast<size_t>(0x10000));
+      file_bytes = std::min(static_cast<size_t>(input_file.tellg()),
+                            static_cast<size_t>(0x10000));
       input_file.seekg(0);
-      input_file.read((char *)(&memory[0]), file_bytes);
-      input_file.close();
-      log(std::format("Loaded {} bytes from {}\n", file_bytes, filename));
-      log(std::format("Reset vector: {:02X}{:02X}\n", memory[0xfffd],
-                      memory[0xfffc]));
+      if (file_bytes < 16) {
+        file_type = FileType::Bin;
+      } else {
+        input_file.read((char *)(&header), sizeof(header));
+        log(std::format("{:04x}\n", header.magic));
+        if (header.magic == 0x1a53454e) {
+          file_type = FileType::Nes;
+        } else {
+          input_file.seekg(0);
+          file_type = FileType::Bin;
+        }
+      }
     }
   }
 
-  if (filename.empty()) {
+  if (file_type == FileType::Bin) {
+    log("Reading file as bin\n");
+    input_file.seekg(0);
+    input_file.read((char *)(&memory[0]), file_bytes);
+    input_file.close();
+    log(std::format("Loaded {} bytes from {}\n", file_bytes, filename));
+    log(std::format("Reset vector: {:02X}{:02X}\n", memory[0xfffd],
+                    memory[0xfffc]));
+  }
+
+  else if (file_type == FileType::Nes) {
+    log("Reading file as nes\n");
+    size_t read_size =
+        std::min(static_cast<size_t>(file_bytes - input_file.tellg()),
+                 static_cast<size_t>(0x8000));
+    input_file.read((char *)(&memory[0x8000]), read_size);
+  }
+
+  else if (file_type == FileType::None) {
+    log("Using default program (no file)\n");
     // This is the default program from visual6502.org
     /*
     0000   A9 00                LDA #$00
