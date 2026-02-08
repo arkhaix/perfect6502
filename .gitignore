@@ -14,3 +14,4 @@ measure
 *.o
 
 *.bin
+*.nes
