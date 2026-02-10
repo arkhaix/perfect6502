@@ -1,4 +1,6 @@
 #include <algorithm>
+#include <cstring> // memcpy
+#include <format>
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -224,8 +226,12 @@ void advanceInstruction(void *state, bool print_state) {
 
 void log(std::string str) {
 #if WITH_CURSES
-  addstr(str.c_str());
-  refresh();
+  if (FLAGS_interactive) {
+    addstr(str.c_str());
+    refresh();
+  } else {
+    printf("%s", str.c_str());
+  }
 #else
   printf("%s", str.c_str());
 #endif
@@ -233,42 +239,60 @@ void log(std::string str) {
 
 void init() {
 #if WITH_CURSES
-  initscr();
-  scrollok(stdscr, true);
-  cbreak();
-  noecho();
-  keypad(stdscr, true);
+  if (FLAGS_interactive) {
+    initscr();
+    scrollok(stdscr, true);
+    cbreak();
+    noecho();
+    keypad(stdscr, true);
+  }
 #endif
 }
 
 void shutdown() {
 #if WITH_CURSES
-  endwin();
+  if (FLAGS_interactive) {
+    endwin();
+  }
 #endif
 }
 
 int get_input_key() {
 #if WITH_CURSES
-  int ch = getch();
+  if (FLAGS_interactive) {
+    int ch = getch();
+    return static_cast<int>(ch);
+  } else {
+    char ch = 0;
+    std::cin.get(ch);
+    return static_cast<int>(ch);
+  }
 #else
   char ch = 0;
   std::cin.get(ch);
-#endif
   return static_cast<int>(ch);
+#endif
 }
 
 std::string get_input_line() {
 #if WITH_CURSES
-  echo();
-  char input[80];
-  getnstr(input, 80);
-  std::string str(input);
-  noecho();
+  if (FLAGS_interactive) {
+    echo();
+    char input[80];
+    getnstr(input, 80);
+    std::string str(input);
+    noecho();
+    return str;
+  } else {
+    std::string str;
+    std::getline(std::cin, str);
+    return str;
+  }
 #else
   std::string str;
   std::getline(std::cin, str);
-#endif
   return str;
+#endif
 }
 
 void help_interactive() {
