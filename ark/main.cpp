@@ -54,11 +54,13 @@ void printState(void *state) {
   auto data_bus = readDataBus(state);
   auto rw = readRW(state);
 
+  auto addr_deref = mRead(address_bus);
+
   auto sp = readSP(state);
-  auto sp_deref = memory[0x100 | sp];
+  auto sp_deref = mRead(0x100 | sp);
 
   auto pc = readPC(state);
-  auto pc_deref = memory[pc];
+  auto pc_deref = mRead(pc);
 
   auto a = readA(state);
   auto x = readX(state);
@@ -68,15 +70,16 @@ void printState(void *state) {
   // Print disassembly before first output of new instruction
   if (t2 == 0) {
     log(std::format("{}\n",
-                    ark::disassemble(ir, memory[pc], memory[pc + 1]).c_str()));
+                    ark::disassemble(ir, mRead(pc), mRead(pc + 1)).c_str()));
   }
 
-  std::string display = std::format(
-      "PC:{:04X} (PC):{:02X} IR:{:02X} Sync:{} SP:{:02X} "
-      "(SP):{:02X} Addr:{:04X} Data:{:02X} RW:{} A:{:02X} X:{:02X} Y:{:02X} "
-      "P:{:02X}\n",
-      pc, pc_deref, ir, sync_, sp, sp_deref, address_bus, data_bus, rw, a, x, y,
-      p);
+  std::string display =
+      std::format("PC:{:04X} (PC):{:02X} IR:{:02X} Sync:{} SP:{:02X} "
+                  "(SP):{:02X} Addr:{:04X} (Addr):{:02X} Data:{:02X} RW:{} "
+                  "A:{:02X} X:{:02X} Y:{:02X} "
+                  "P:{:02X}\n",
+                  pc, pc_deref, ir, sync_, sp, sp_deref, address_bus,
+                  addr_deref, data_bus, rw, a, x, y, p);
   log(display);
 
   if (sync_ != 0) {
@@ -138,8 +141,8 @@ void setupMemory(std::string filename) {
     input_file.read((char *)(&memory[0]), file_bytes);
     input_file.close();
     log(std::format("Loaded {} bytes from {}\n", file_bytes, filename));
-    log(std::format("Reset vector: {:02X}{:02X}\n", memory[0xfffd],
-                    memory[0xfffc]));
+    log(std::format("Reset vector: {:02X}{:02X}\n", mRead(0xfffd),
+                    mRead(0xfffc)));
   }
 
   else if (file_type == FileType::Nes) {
@@ -368,7 +371,7 @@ int main(int argc, char **argv) {
         address &= 0xffff;
         std::string output = std::format("{:04X}:  ", address);
         for (int i = 0; i < 16; i++) {
-          output += std::format("{:02X} ", memory[(address + i) & 0xffff]);
+          output += std::format("{:02X} ", mRead((address + i) & 0xffff));
         }
         output += "\n";
         log(output);
