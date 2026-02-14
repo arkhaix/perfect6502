@@ -816,6 +816,14 @@ isNodeHigh(state_t *state, nodenum_t nn)
 	return get_nodes_value(state, nn);
 }
 
+void
+setNodePulldown(state_t *state, nodenum_t nn)
+{
+	set_nodes_pullup(state, nn, 0);
+	set_nodes_pulldown(state, nn, 1);
+	listout_add(state, nn);
+}
+
 /************************************************************
  *
  * Interfacing and Extracting State

@@ -179,6 +179,10 @@ void *initAndResetChip(void) {
   setNode(state, res, 1);
   recalcNodeList(state);
 
+  /* 2A03: decimal mode is physically removed */
+  setNodePulldown(state, p3);
+  recalcNodeList(state);
+
   cycle = 0;
 
   return state;
